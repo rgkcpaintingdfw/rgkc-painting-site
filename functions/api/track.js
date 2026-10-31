@@ -1,11 +1,11 @@
 // POST /api/track  — records a page view or a click event. Always answers 204 so the site never waits on it.
-import { getDb, clip, deviceOf, isBot, refHost, visitorId } from '../../lib/db.js';
+import { getDb, clip, deviceOf, isBot, isDatacenter, refHost, visitorId } from '../../lib/db.js';
 
 const done = () => new Response(null, { status: 204 });
 
 export async function onRequestPost({ request, env }) {
   const ua = request.headers.get('User-Agent') || '';
-  if (isBot(ua)) return done();
+  if (isBot(ua) || isDatacenter(request.cf)) return done();
   let b;
   try { b = JSON.parse((await request.text()) || '{}'); } catch (e) { return done(); }
   const type = b.t === 'event' ? 'event' : 'view';

@@ -191,6 +191,7 @@ tr.more td{background:#FAFAF6;padding:14px 16px 18px}
   <div class="foot">
     <label class="switch"><input type="checkbox" id="ignore"> <span><b>Don&rsquo;t count my own visits on this device</b><br><small id="ignoreState" style="color:var(--muted)">Off: your visits on this device are being counted</small></span></label>
     <span id="alltime"></span>
+    <span><button class="del" type="button" id="reset">Reset visitor numbers</button> <span class="del-note" id="resetNote"></span></span>
   </div>
 </main>
 
@@ -375,6 +376,16 @@ var ig=$("#ignore"); try{ig.checked=localStorage.getItem("rgkc_ignore")==="1";}c
 function igText(){$("#ignoreState").textContent=ig.checked?"On: visits from this device are not counted":"Off: your visits on this device are being counted";}
 igText();
 ig.addEventListener("change",function(){try{if(ig.checked)localStorage.setItem("rgkc_ignore","1");else localStorage.removeItem("rgkc_ignore");}catch(e){}igText();});
+var rb=$("#reset"),rn=$("#resetNote");
+rb.addEventListener("click",function(){
+  if(!rb.classList.contains("sure")){rb.classList.add("sure");rb.textContent="Click again to wipe all visits";rn.textContent="Estimate requests are kept.";
+    clearTimeout(rb._t);rb._t=setTimeout(function(){rb.classList.remove("sure");rb.textContent="Reset visitor numbers";rn.textContent="";},5000);return;}
+  rb.disabled=true;rb.textContent="Resetting\u2026";
+  fetch("/admin/api/reset",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({confirm:"RESET"})})
+    .then(function(r){if(r.status===401){location.href="/admin";throw 0;}return r.json();})
+    .then(function(d){if(!d.ok)throw 0;rb.classList.remove("sure");rb.disabled=false;rb.textContent="Reset visitor numbers";rn.textContent="Done. Visitor numbers start fresh from now.";loadStats();})
+    .catch(function(){rb.disabled=false;rb.classList.remove("sure");rb.textContent="Reset visitor numbers";rn.textContent="Couldn't reset. Try again.";});
+});
 var rt;addEventListener("resize",function(){clearTimeout(rt);rt=setTimeout(drawCharts,150);});
 loadStats(); loadLeads();
 setInterval(function(){if(!document.hidden){loadStats();loadLeads();}},120000);
