@@ -91,6 +91,11 @@ tr.more td{background:#FAFAF6;padding:14px 16px 18px}
 .kv{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px 18px}
 .kv div small{display:block;font-size:11.5px;color:var(--muted);font-weight:600}
 .kv .wide{grid-column:1/-1}
+.lead-actions{grid-column:1/-1;display:flex;gap:10px;align-items:center;margin-top:4px}
+.del{border:1px solid #E7C3BE;background:#fff;color:var(--down);border-radius:7px;padding:7px 12px;font-size:13px;font-weight:600;cursor:pointer}
+.del:hover{background:#FDF3F2}
+.del.sure{background:var(--down);border-color:var(--down);color:#fff}
+.del-note{font-size:12.5px;color:var(--muted)}
 @media(max-width:760px){
   thead{display:none}
   table,tbody,tr,td{display:block;width:100%}
@@ -184,7 +189,7 @@ tr.more td{background:#FAFAF6;padding:14px 16px 18px}
   </section>
 
   <div class="foot">
-    <label class="switch"><input type="checkbox" id="ignore"> Don&rsquo;t count my own visits on this device</label>
+    <label class="switch"><input type="checkbox" id="ignore"> <span><b>Don&rsquo;t count my own visits on this device</b><br><small id="ignoreState" style="color:var(--muted)">Off: your visits on this device are being counted</small></span></label>
     <span id="alltime"></span>
   </div>
 </main>
@@ -318,7 +323,8 @@ function details(l){
   var kv=[["Property",l.property],["Timing",l.timing],["ZIP",l.zip],["Offer applied",l.offer]];
   Object.keys(d).forEach(function(k){kv.push([k,d[k]]);});
   return '<div class="kv">'+kv.filter(function(x){return x[1];}).map(function(x){return '<div><small>'+esc(x[0])+'</small>'+esc(x[1])+'</div>';}).join("")+
-    '<div class="wide"><small>Notes</small>'+(l.notes?esc(l.notes):"None")+'</div></div>';
+    '<div class="wide"><small>Notes</small>'+(l.notes?esc(l.notes):"None")+'</div>'+
+    '<div class="lead-actions"><button type="button" class="del" data-del="'+l.id+'">Delete request</button><span class="del-note"></span></div></div>';
 }
 function loadLeads(){
   fetch("/admin/api/leads",{cache:"no-store"}).then(function(r){if(r.status===401){location.href="/admin";throw 0;}return r.json();}).then(function(s){
@@ -327,7 +333,19 @@ function loadLeads(){
   }).catch(function(){$("#tbody").innerHTML='<tr><td colspan="7" class="empty">Couldn&rsquo;t load requests. Check your connection.</td></tr>';});
 }
 $("#tbody").addEventListener("click",function(e){
-  if(e.target.closest("a,select"))return;
+  var del=e.target.closest("button.del");
+  if(del){
+    var note=del.nextElementSibling;
+    if(!del.classList.contains("sure")){del.classList.add("sure");del.textContent="Click again to delete for good";note.textContent="This can't be undone.";
+      clearTimeout(del._t);del._t=setTimeout(function(){del.classList.remove("sure");del.textContent="Delete request";note.textContent="";},5000);return;}
+    var id=+del.dataset.del; del.disabled=true; del.textContent="Deleting\u2026";
+    fetch("/admin/api/leads",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({id:id,delete:true})})
+      .then(function(r){if(r.status===401){location.href="/admin";throw 0;}if(!r.ok)throw 0;
+        leads=leads.filter(function(x){return x.id!==id;}); renderLeads(); loadStats();})
+      .catch(function(){del.disabled=false;del.classList.remove("sure");del.textContent="Delete request";note.textContent="Couldn't delete. Try again.";});
+    return;
+  }
+  if(e.target.closest("a,select,.more"))return;
   var tr=e.target.closest("tr.lead"); if(!tr)return;
   var nx=tr.nextElementSibling;
   if(nx&&nx.classList.contains("more")){nx.remove();return;}
@@ -354,7 +372,9 @@ $("#csv").addEventListener("click",function(){
 /* ---------- controls ---------- */
 document.querySelectorAll(".seg button").forEach(function(b){b.addEventListener("click",function(){days=+b.dataset.days;document.querySelectorAll(".seg button").forEach(function(o){o.setAttribute("aria-pressed",o===b);});loadStats();});});
 var ig=$("#ignore"); try{ig.checked=localStorage.getItem("rgkc_ignore")==="1";}catch(e){}
-ig.addEventListener("change",function(){try{if(ig.checked)localStorage.setItem("rgkc_ignore","1");else localStorage.removeItem("rgkc_ignore");}catch(e){}});
+function igText(){$("#ignoreState").textContent=ig.checked?"On: visits from this device are not counted":"Off: your visits on this device are being counted";}
+igText();
+ig.addEventListener("change",function(){try{if(ig.checked)localStorage.setItem("rgkc_ignore","1");else localStorage.removeItem("rgkc_ignore");}catch(e){}igText();});
 var rt;addEventListener("resize",function(){clearTimeout(rt);rt=setTimeout(drawCharts,150);});
 loadStats(); loadLeads();
 setInterval(function(){if(!document.hidden){loadStats();loadLeads();}},120000);

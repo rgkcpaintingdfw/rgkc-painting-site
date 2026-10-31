@@ -1,4 +1,4 @@
-// GET /admin/api/leads — latest estimate requests. POST — change a lead's status.
+// GET /admin/api/leads — latest estimate requests. POST — change a lead's status, or delete it.
 import { getDb, json } from '../../../lib/db.js';
 
 const STATUSES = ['new', 'contacted', 'quoted', 'won', 'lost'];
@@ -16,7 +16,15 @@ export async function onRequestGet({ env }) {
 export async function onRequestPost({ request, env }) {
   let b;
   try { b = await request.json(); } catch (e) { return json({ ok: false }, 400); }
-  if (!Number.isInteger(b.id) || !STATUSES.includes(b.status)) return json({ ok: false, error: 'invalid' }, 400);
+  if (!Number.isInteger(b.id)) return json({ ok: false, error: 'invalid' }, 400);
+  if (b.delete === true) {
+    try {
+      const db = await getDb(env);
+      await db.prepare('DELETE FROM leads WHERE id=?').bind(b.id).run();
+      return json({ ok: true, deleted: b.id });
+    } catch (e) { return json({ ok: false, error: 'db_error' }, 500); }
+  }
+  if (!STATUSES.includes(b.status)) return json({ ok: false, error: 'invalid' }, 400);
   try {
     const db = await getDb(env);
     await db.prepare('UPDATE leads SET status=? WHERE id=?').bind(b.status, b.id).run();
