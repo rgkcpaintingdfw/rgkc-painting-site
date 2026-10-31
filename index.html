@@ -1050,6 +1050,25 @@ var $=function(s,c){return (c||doc).querySelector(s);}, $$=function(s,c){return 
 function clamp(v,a,b){return v<a?a:(v>b?b:v);}
 function toast(msg){var t=$("#toast");t.textContent=msg;t.classList.add("on");clearTimeout(toast._t);toast._t=setTimeout(function(){t.classList.remove("on");},2600);}
 
+
+/* =========================================================
+   VISIT + CLICK COUNTER (goes to our own /api/track, shown on /admin).
+   No cookies, no raw IP addresses stored.
+   ========================================================= */
+var TRACK_ON=/(^|\.)rgkcpainting\.com$|\.pages\.dev$|^localhost$|^127\.0\.0\.1$/.test(location.hostname), trackOff=false;
+try{trackOff=localStorage.getItem("rgkc_ignore")==="1";}catch(e){}
+function track(type,name){
+  if(!TRACK_ON||trackOff) return;
+  var body=JSON.stringify({t:type,n:name||"",p:location.pathname,r:type==="view"?document.referrer:""});
+  try{ if(navigator.sendBeacon&&navigator.sendBeacon("/api/track",new Blob([body],{type:"text/plain"}))) return; }catch(e){}
+  try{ fetch("/api/track",{method:"POST",body:body,keepalive:true}).catch(function(){}); }catch(e){}
+}
+track("view");
+doc.addEventListener("click",function(e){
+  var a=e.target.closest('a[href^="tel:"],a[href^="mailto:"]'); if(!a) return;
+  track("event",a.getAttribute("href").indexOf("tel:")===0?"call":"email");
+},true);
+
 /* =========================================================
    PRICING — rough DFW ranges. Edit these to match RG & KC.
    ========================================================= */
@@ -1201,6 +1220,7 @@ function tfUpdate(){
 var drawer=$("#drawer"), scrim=$("#scrim"), lastFocus=null, curPreset=null;
 function openDrawer(key){
   var s=SVC[key]; if(!s) return;
+  track("event","svc:"+key);
   closeAll(); setMenu(false);
   $("#dTag").textContent=s.tag; $("#dTitle").textContent=s.title; $("#dLead").textContent=s.lead;
   var img=$("#dImg"); img.src=s.img; img.alt=s.title;
@@ -1288,13 +1308,15 @@ function renderSum(){
   anim=requestAnimationFrame(s);
 }
 function needs(){var j=Q.jobs;$$("[data-need]").forEach(function(b){var k=b.dataset.need;var on=k==="rooms"?(j.walls||j.ceil||j.trim):!!j[k];b.hidden=!on;});}
-$$("#optJobs .opt").forEach(function(o){o.addEventListener("click",function(){var k=o.dataset.k,on=o.getAttribute("aria-pressed")!=="true";o.setAttribute("aria-pressed",on?"true":"false");if(on)Q.jobs[k]=1;else delete Q.jobs[k];qErr.textContent="";needs();renderSum();});});
+var estStarted=false;
+$$("#optJobs .opt").forEach(function(o){o.addEventListener("click",function(){if(!estStarted){estStarted=true;track("event","est_start");}var k=o.dataset.k,on=o.getAttribute("aria-pressed")!=="true";o.setAttribute("aria-pressed",on?"true":"false");if(on)Q.jobs[k]=1;else delete Q.jobs[k];qErr.textContent="";needs();renderSum();});});
 $$(".pills[data-group]").forEach(function(g){var key=g.dataset.group;$$("button",g).forEach(function(b){b.addEventListener("click",function(){$$("button",g).forEach(function(o){o.setAttribute("aria-pressed",o===b?"true":"false");});Q[key]=b.dataset.v;renderSum();});});});
 $("#rMinus").addEventListener("click",function(){Q.rooms=Math.max(1,Q.rooms-1);$("#rOut").textContent=Q.rooms;renderSum();});
 $("#rPlus").addEventListener("click",function(){Q.rooms=Math.min(25,Q.rooms+1);$("#rOut").textContent=Q.rooms;renderSum();});
 $("#qCity").addEventListener("change",function(e){Q.city=e.target.value;});
 
 function go(n,back){
+  if(!back) track("event","est_step"+n);
   steps.forEach(function(s){s.classList.remove("on","back");});
   var s=steps[n-1]; s.classList.add("on"); if(back) s.classList.add("back");
   Q.step=n; $("#qLbl").textContent="Step "+n+" of 4"; $("#qProg").style.width=(n*25)+"%";
@@ -1344,16 +1366,24 @@ function sendQuote(c){
   if(j.cab) data["Kitchen size"]=pillText("kit");
   if(j.com) data["Commercial sq ft"]=$("#comSq").value.trim()||"Not given";
   qNext.disabled=true; qBack.disabled=true; qNext.innerHTML="Sending&hellip;"; qErr.textContent="";
-  fetch("https://api.web3forms.com/submit",{method:"POST",headers:{"Content-Type":"application/json",Accept:"application/json"},body:JSON.stringify(data)})
-    .then(function(res){return res.json().then(function(d){if(!res.ok||!d.success) throw new Error(d.message||"failed");});})
-    .then(function(){
+  var lead={name:c.name,phone:c.phone,email:c.email,city:$("#qCity").value,zip:$("#qZip").value.trim(),
+    property:pillText("prop"),services:picked,timing:pillText("when"),range:data["Rough range shown"],
+    offer:r.off||"",notes:$("#qNotes").value.trim(),details:{}};
+  ["Rooms","Home size","Stories","Kitchen size","Commercial sq ft"].forEach(function(k){if(data[k]) lead.details[k]=data[k];});
+  var toEmail=fetch("https://api.web3forms.com/submit",{method:"POST",headers:{"Content-Type":"application/json",Accept:"application/json"},body:JSON.stringify(data)})
+    .then(function(res){return res.json().then(function(d){return !!(res.ok&&d.success);});}).catch(function(){return false;});
+  var toAdmin=TRACK_ON?fetch("/api/lead",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(lead)})
+    .then(function(res){return res.ok;}).catch(function(){return false;}):Promise.resolve(false);
+  Promise.all([toEmail,toAdmin]).then(function(ok){
+    if(ok[0]||ok[1]){
+      track("event","est_submit");
       steps.forEach(function(s){s.classList.remove("on");}); $("#qNav").hidden=true; $(".q-top").style.visibility="hidden";
       $("#qDone").hidden=false;
-    })
-    .catch(function(){
+    }else{
       qNext.disabled=false; qBack.disabled=false; qNext.innerHTML='Try again <span class="arr">&rarr;</span>';
       fail("We couldn't send that just now. Please call or text (945) 260-9508, or email rgkcpaintingdfw@gmail.com.");
-    });
+    }
+  });
 }
 
 function presetJob(k){
@@ -1361,7 +1391,7 @@ function presetJob(k){
   $("#estimate").scrollIntoView({behavior:reduce?"auto":"smooth"});
   toast("Added to your estimate");
 }
-$$("[data-preset]").forEach(function(a){a.addEventListener("click",function(e){e.preventDefault();presetJob(a.dataset.preset);});});
+$$("[data-preset]").forEach(function(a){a.addEventListener("click",function(e){e.preventDefault();track("event","offer:"+a.dataset.preset);presetJob(a.dataset.preset);});});
 function pickCity(c){
   closeAll(); setMenu(false); closeDrawer();
   var sel=$("#qCity"); var found=false; $$("option",sel).forEach(function(o){if(o.value===c||o.textContent===c){sel.value=o.value||o.textContent;found=true;}});
