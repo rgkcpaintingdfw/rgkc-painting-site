@@ -117,6 +117,7 @@ tr.more td{background:#FAFAF6;padding:14px 16px 18px}
     <a class="brand" href="/admin"><img src="/img/mark.svg" alt=""><div><b>RG &amp; KC</b><br><span>Admin</span></div></a>
     <div class="grow"></div>
     <a class="btn" href="/" target="_blank" rel="noopener">View site &#8599;</a>
+    <a class="btn" href="/admin/logout">Log out</a>
   </div>
 </header>
 
@@ -268,7 +269,7 @@ var last=null;
 function drawCharts(){if(!last)return;chart($("#c-visitors"),last.daily,"visitors","line","Visitors per day");chart($("#c-leads"),last.daily,"leads","bar","Estimate requests per day");}
 function loadStats(){
   $("#range").textContent="Loading…";
-  fetch("/admin/api/stats?days="+days,{cache:"no-store"}).then(function(r){return r.json();}).then(function(s){
+  fetch("/admin/api/stats?days="+days,{cache:"no-store"}).then(function(r){if(r.status===401){location.href="/admin";throw 0;}return r.json();}).then(function(s){
     if(!s.ok){if(s.error==="no_database"){$("#setup").hidden=false;$("#range").textContent="Waiting for the database";}else $("#range").textContent="Couldn't load the numbers. Refresh to try again.";return;}
     $("#setup").hidden=true; last=s;
     $("#range").textContent=(days===1?"Today, ":"")+shortDate(s.from)+(days===1?"":" – "+shortDate(s.to))+" · Dallas time";
@@ -320,7 +321,7 @@ function details(l){
     '<div class="wide"><small>Notes</small>'+(l.notes?esc(l.notes):"None")+'</div></div>';
 }
 function loadLeads(){
-  fetch("/admin/api/leads",{cache:"no-store"}).then(function(r){return r.json();}).then(function(s){
+  fetch("/admin/api/leads",{cache:"no-store"}).then(function(r){if(r.status===401){location.href="/admin";throw 0;}return r.json();}).then(function(s){
     if(!s.ok){$("#tbody").innerHTML='<tr><td colspan="7" class="empty">'+(s.error==="no_database"?"Connect the database (see the steps above) to see requests here.":"Couldn't load requests. Refresh to try again.")+'</td></tr>';return;}
     leads=s.leads; renderLeads();
   }).catch(function(){$("#tbody").innerHTML='<tr><td colspan="7" class="empty">Couldn&rsquo;t load requests. Check your connection.</td></tr>';});
